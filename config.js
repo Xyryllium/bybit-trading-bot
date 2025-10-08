@@ -9,7 +9,7 @@ export const config = {
     apiKey: process.env.API_KEY,
     secret: process.env.API_SECRET,
     options: {
-      defaultType: "spot", // 'spot' or 'linear' (USDT perpetual)
+      defaultType: "linear", // 'spot' or 'linear' (USDT perpetual)
       recvWindow: 10000,
     },
     enableRateLimit: true,
