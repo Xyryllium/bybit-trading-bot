@@ -1,0 +1,36 @@
+{
+  "name": "trading-bot-100",
+  "version": "1.0.0",
+  "description": "Automated trading bot optimized for $100 balance with risk management",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "backtest": "node backtest.js",
+    "dry-run": "node index.js --dry-run",
+    "test-connection": "node test-connection.js",
+    "scalp:1m": "node backtest.js SOL/USDT 1m 7",
+    "scalp:5m": "node backtest.js SOL/USDT 5m 30",
+    "scalp:compare": "node backtest.js SOL/USDT 5m 30 && node backtest.js SOL/USDT 1m 7",
+    "smc": "node backtest.js BTC/USDT 15m 60",
+    "smc:refined": "node backtest.js BTC/USDT 1h 30",
+    "rsi": "node backtest.js BTC/USDT 15m 60",
+    "test:all": "node backtest.js SOL/USDT 5m 30",
+    "compare:all": "echo Testing all strategies... && npm run rsi && npm run smc && npm run smc:refined && npm run scalp:5m"
+  },
+  "keywords": [
+    "trading",
+    "bot",
+    "crypto",
+    "binance",
+    "automated-trading"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ccxt": "^4.2.25",
+    "dotenv": "^16.4.1",
+    "winston": "^3.11.0",
+    "node-fetch": "^3.3.2"
+  }
+}
