@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
+    "upbit-listing": "node upbit-listing-bot.js",
+    "upbit-listing:backtest": "node upbit-listing-backtest.js",
     "backtest": "node backtest.js",
+    "backtest:multi": "node multiSymbolBacktest.js",
     "dry-run": "node index.js --dry-run",
     "test-connection": "node test-connection.js",
     "scalp:1m": "node backtest.js SOL/USDT 1m 7",
@@ -30,7 +33,8 @@
   "dependencies": {
     "ccxt": "^4.2.25",
     "dotenv": "^16.4.1",
-    "winston": "^3.11.0",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "twitter-api-v2": "^1.27.0",
+    "winston": "^3.11.0"
   }
 }
