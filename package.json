@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "upbit-listing": "node upbit-listing-bot.js",
+    "upbit-listing": "node upbit-listing-bot-polling.js",
+    "upbit-listing:stream": "node upbit-listing-bot-streaming.js",
     "upbit-listing:backtest": "node upbit-listing-backtest.js",
     "backtest": "node backtest.js",
     "backtest:multi": "node multiSymbolBacktest.js",
