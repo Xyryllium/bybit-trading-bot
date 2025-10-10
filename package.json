@@ -7,6 +7,8 @@
   "scripts": {
     "start": "node index.js",
     "upbit-listing": "node upbit-listing-bot-polling.js",
+    "upbit-listing:api": "node upbit-api-listing-bot.js",
+    "upbit-listing:api-backtest": "node upbit-api-listing-backtest.js",
     "upbit-listing:stream": "node upbit-listing-bot-streaming.js",
     "upbit-listing:backtest": "node upbit-listing-backtest.js",
     "backtest": "node backtest.js",
@@ -32,6 +34,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "axios": "^1.12.2",
     "ccxt": "^4.2.25",
     "dotenv": "^16.4.1",
     "node-fetch": "^3.3.2",

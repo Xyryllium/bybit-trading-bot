@@ -491,39 +491,89 @@ class UpbitListingStrategy {
   // Start monitoring Twitter stream
   async startTwitterStream() {
     try {
-      const userId = this.config.twitterUserId; // NewListingsFeed user ID
+      logger.info("🚀 Attempting to start Twitter streaming...");
 
-      logger.info(`Starting Twitter stream for user ID: ${userId}`);
+      // Try Sample Stream first (FREE - works with Elevated access)
+      try {
+        logger.info("Trying Sample Stream (1% of all tweets)...");
 
-      // Create filtered stream rules
-      const rules = await this.twitterClient.v2.streamRules();
-
-      // Delete existing rules if any
-      if (rules.data?.length) {
-        await this.twitterClient.v2.updateStreamRules({
-          delete: { ids: rules.data.map((rule) => rule.id) },
+        this.stream = await this.twitterClient.v2.sampleStream({
+          "tweet.fields": ["created_at", "author_id", "text"],
+          "user.fields": ["username"],
+          expansions: ["author_id"],
         });
+
+        logger.info("✅ Sample Stream started successfully!");
+        logger.info("📡 Monitoring 1% of ALL tweets for Upbit listings...");
+        logger.info("⚡ Real-time streaming active!");
+
+        // Handle incoming tweets
+        this.stream.on("data", async (tweet) => {
+          await this.processTweet(tweet);
+        });
+
+        this.stream.on("error", (error) => {
+          logger.error("Sample stream error:", error);
+          if (this.isRunning) {
+            logger.info("Attempting to reconnect in 30 seconds...");
+            setTimeout(() => this.startTwitterStream(), 30000);
+          }
+        });
+
+        this.stream.on("end", () => {
+          logger.info("Sample stream ended");
+          if (this.isRunning) {
+            logger.info("Attempting to reconnect in 10 seconds...");
+            setTimeout(() => this.startTwitterStream(), 10000);
+          }
+        });
+
+        return; // Success with Sample Stream
+      } catch (sampleError) {
+        logger.warn("Sample Stream failed:", sampleError.message);
+        logger.info("Trying Filtered Stream as fallback...");
       }
 
-      // Add new rule for the specific user
-      // This will match tweets containing both "listed" and "Upbit" (or Official_Upbit)
-      await this.twitterClient.v2.updateStreamRules({
+      // Fallback to Filtered Stream (requires Basic/Pro tier)
+      const userId = this.config.twitterUserId;
+
+      logger.info(`Setting up Filtered Stream for user ID: ${userId}`);
+
+      // Delete existing rules first
+      try {
+        const existingRules = await this.twitterClient.v2.streamRules();
+        if (existingRules.data && existingRules.data.length > 0) {
+          const ruleIds = existingRules.data.map((rule) => rule.id);
+          await this.twitterClient.v2.updateStreamRules({
+            delete: { ids: ruleIds },
+          });
+          logger.info(`Deleted ${ruleIds.length} existing stream rules`);
+        }
+      } catch (error) {
+        logger.warn("No existing rules to delete:", error.message);
+      }
+
+      // Add new rule for Upbit listings
+      const rule = {
         add: [
           {
             value: `from:${this.config.twitterUsername} (listed Upbit OR listed Official_Upbit)`,
             tag: "upbit-listings",
           },
         ],
-      });
+      };
 
-      // Start streaming
+      await this.twitterClient.v2.updateStreamRules(rule);
+      logger.info("Filtered stream rule added successfully");
+
+      // Start filtered streaming
       this.stream = await this.twitterClient.v2.searchStream({
         "tweet.fields": ["created_at", "author_id"],
         "user.fields": ["username"],
         expansions: ["author_id"],
       });
 
-      logger.info("Twitter stream started successfully");
+      logger.info("✅ Filtered Stream started successfully!");
 
       // Handle incoming tweets
       this.stream.on("data", async (tweet) => {
@@ -531,7 +581,7 @@ class UpbitListingStrategy {
       });
 
       this.stream.on("error", (error) => {
-        logger.error("Twitter stream error:", error);
+        logger.error("Filtered stream error:", error);
         if (this.isRunning) {
           logger.info("Attempting to reconnect in 30 seconds...");
           setTimeout(() => this.startTwitterStream(), 30000);
@@ -539,14 +589,32 @@ class UpbitListingStrategy {
       });
 
       this.stream.on("end", () => {
-        logger.info("Twitter stream ended");
+        logger.info("Filtered stream ended");
         if (this.isRunning) {
           logger.info("Attempting to reconnect in 10 seconds...");
           setTimeout(() => this.startTwitterStream(), 10000);
         }
       });
     } catch (error) {
-      logger.error("Error starting Twitter stream:", error);
+      logger.error("❌ All streaming methods failed:", error);
+
+      if (error.message.includes("403")) {
+        logger.info("");
+        logger.info("🚨 STREAMING ACCESS DENIED");
+        logger.info(
+          "Your account needs Basic ($100/month) or Pro ($5,000/month) tier"
+        );
+        logger.info(
+          "for Filtered Streams, or Sample Stream failed for other reasons."
+        );
+        logger.info("");
+        logger.info("💡 RECOMMENDED: Use polling mode instead");
+        logger.info("Run: npm run upbit-listing (polling mode)");
+        logger.info(
+          "Only 5-15 seconds slower, works with free Elevated access!"
+        );
+      }
+
       throw error;
     }
   }

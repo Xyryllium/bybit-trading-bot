@@ -21,6 +21,9 @@ class UpbitListingBacktest {
     this.stopLossPercent = config.stopLossPercent || 5;
     this.sellAfterSeconds = config.sellAfterSeconds || 60;
     this.maxTrades = config.maxTrades || 50; // Limit number of historical tweets to test
+
+    // Twitter Streaming realistic delay (network + processing + execution)
+    this.twitterStreamDelay = config.twitterStreamDelay || 1.5; // 1.5 seconds realistic delay
   }
 
   // Initialize Twitter API client
@@ -223,8 +226,10 @@ class UpbitListingBacktest {
   // Get historical price data around tweet time
   async getHistoricalPrices(symbol, tweetTime) {
     try {
-      // Calculate timeframes - NO DELAY, execute immediately
-      const entryTime = tweetTime; // Execute immediately at tweet time
+      // Calculate timeframes - Add realistic Twitter streaming delay
+      // Even real-time streaming has network latency + processing + execution time
+      const delayMs = this.twitterStreamDelay * 1000; // Convert to milliseconds
+      const entryTime = new Date(tweetTime.getTime() + delayMs); // Add realistic delay
       const exitTime = new Date(
         entryTime.getTime() + this.sellAfterSeconds * 1000
       );
@@ -435,7 +440,12 @@ class UpbitListingBacktest {
       );
       logger.info(`Stop Loss: ${this.stopLossPercent}%`);
       logger.info(`Hold Time: ${this.sellAfterSeconds} seconds`);
-      logger.info(`⚡ NO EXECUTION DELAY (Immediate entry at tweet time)`);
+      logger.info(
+        `⚡ TWITTER STREAMING: ~${this.twitterStreamDelay}s realistic delay`
+      );
+      logger.info(
+        `   (Network: ~500ms + Processing: ~500ms + Execution: ~500ms)`
+      );
       logger.info("=".repeat(60));
 
       // Initialize APIs
@@ -681,6 +691,8 @@ async function main() {
       stopLossPercent: parseFloat(process.env.STOP_LOSS_PERCENT) || 5,
       sellAfterSeconds: parseInt(process.env.SELL_AFTER_SECONDS) || 60,
       maxTrades: parseInt(process.env.MAX_BACKTEST_TRADES) || 50,
+      // Twitter streaming realistic delay (same as comparison backtest)
+      twitterStreamDelay: parseFloat(process.env.TWITTER_STREAM_DELAY) || 1.5,
     };
 
     // Validate Twitter token (only requirement for backtesting)

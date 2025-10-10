@@ -19,7 +19,7 @@ module.exports = {
     },
     {
       name: "upbit-listing-bot",
-      script: "upbit-listing-bot-polling.js", // Using polling version (more reliable)
+      script: "upbit-api-listing-bot.js", // NEW: Upbit API polling (FASTER & FREE!)
       env_file: "./env.upbit-listing",
       instances: 1,
       autorestart: true,
