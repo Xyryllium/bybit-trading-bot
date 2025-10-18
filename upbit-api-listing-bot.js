@@ -4,7 +4,7 @@ import ccxt from "ccxt";
 import logger from "./logger.js";
 import axios from "axios";
 
-// Performance monitoring
+// Performance monitoring with delay alerting
 class PerformanceMonitor {
   constructor() {
     this.metrics = {
@@ -14,12 +14,57 @@ class PerformanceMonitor {
       detectionCount: 0,
       orderSuccessCount: 0,
       orderFailureCount: 0,
+      apiResponseTimes: [],
+      lastDetectionTime: null,
+      consecutiveSlowDetections: 0,
+    };
+
+    // Alert thresholds
+    this.thresholds = {
+      slowDetection: 5000, // 5 seconds
+      verySlowDetection: 15000, // 15 seconds
+      criticalDelay: 30000, // 30 seconds
+      slowOrderExecution: 3000, // 3 seconds
     };
   }
 
   recordDetection(latencyMs) {
     this.metrics.detectionLatency.push(latencyMs);
     this.metrics.detectionCount++;
+    this.metrics.lastDetectionTime = Date.now();
+
+    // Check for slow detections
+    if (latencyMs > this.thresholds.slowDetection) {
+      this.metrics.consecutiveSlowDetections++;
+
+      if (latencyMs > this.thresholds.criticalDelay) {
+        logger.error(
+          `🚨 CRITICAL DELAY: Detection took ${latencyMs}ms (${
+            latencyMs / 1000
+          }s) - This is causing your 30min delays!`
+        );
+      } else if (latencyMs > this.thresholds.verySlowDetection) {
+        logger.warn(
+          `⚠️  VERY SLOW DETECTION: ${latencyMs}ms (${
+            latencyMs / 1000
+          }s) - Check network/API issues`
+        );
+      } else {
+        logger.warn(
+          `⚠️  SLOW DETECTION: ${latencyMs}ms (${latencyMs / 1000}s)`
+        );
+      }
+    } else {
+      this.metrics.consecutiveSlowDetections = 0;
+    }
+  }
+
+  recordApiResponse(responseTimeMs) {
+    this.metrics.apiResponseTimes.push(responseTimeMs);
+
+    if (responseTimeMs > 2000) {
+      logger.warn(`⚠️  Slow API response: ${responseTimeMs}ms`);
+    }
   }
 
   recordOrderExecution(latencyMs, success = true) {
@@ -28,6 +73,13 @@ class PerformanceMonitor {
       this.metrics.orderSuccessCount++;
     } else {
       this.metrics.orderFailureCount++;
+    }
+
+    // Alert on slow order execution
+    if (latencyMs > this.thresholds.slowOrderExecution) {
+      logger.warn(
+        `⚠️  SLOW ORDER EXECUTION: ${latencyMs}ms (${latencyMs / 1000}s)`
+      );
     }
   }
 
@@ -64,6 +116,18 @@ class PerformanceMonitor {
           min: min(this.metrics.totalLatency).toFixed(2),
           max: max(this.metrics.totalLatency).toFixed(2),
         },
+        apiResponse: {
+          avg: avg(this.metrics.apiResponseTimes).toFixed(2),
+          min: min(this.metrics.apiResponseTimes).toFixed(2),
+          max: max(this.metrics.apiResponseTimes).toFixed(2),
+        },
+      },
+      alerts: {
+        consecutiveSlowDetections: this.metrics.consecutiveSlowDetections,
+        lastDetectionTime: this.metrics.lastDetectionTime,
+        timeSinceLastDetection: this.metrics.lastDetectionTime
+          ? Date.now() - this.metrics.lastDetectionTime
+          : null,
       },
     };
   }
@@ -84,6 +148,27 @@ class PerformanceMonitor {
     logger.info(
       `   Total Latency: ${stats.latency.total.avg}ms avg (${stats.latency.total.min}-${stats.latency.total.max}ms)`
     );
+    logger.info(
+      `   API Response: ${stats.latency.apiResponse.avg}ms avg (${stats.latency.apiResponse.min}-${stats.latency.apiResponse.max}ms)`
+    );
+
+    // Alert on performance issues
+    if (stats.alerts.consecutiveSlowDetections > 0) {
+      logger.warn(
+        `⚠️  ${stats.alerts.consecutiveSlowDetections} consecutive slow detections detected!`
+      );
+    }
+
+    if (
+      stats.alerts.timeSinceLastDetection &&
+      stats.alerts.timeSinceLastDetection > 300000
+    ) {
+      logger.warn(
+        `⚠️  No detections for ${Math.round(
+          stats.alerts.timeSinceLastDetection / 1000
+        )}s - Check bot health!`
+      );
+    }
   }
 }
 
@@ -91,7 +176,7 @@ class PerformanceMonitor {
 const config = {
   // Upbit API configuration
   upbitApiUrl: "https://api.upbit.com/v1/market/all",
-  pollIntervalSeconds: parseInt(process.env.UPBIT_API_POLL_INTERVAL) || 1, // 1 second default
+  pollIntervalSeconds: parseInt(process.env.UPBIT_API_POLL_INTERVAL) || 0.5, // 0.5 second default for faster detection
 
   // Bybit API credentials
   bybitApiKey: process.env.BYBIT_API_KEY,
@@ -142,10 +227,14 @@ class UpbitListingDetector {
     // Axios instance for faster Upbit API calls
     this.upbitApi = axios.create({
       baseURL: "https://api.upbit.com",
-      timeout: 3000, // 3 second timeout
+      timeout: 1500, // 1.5 second timeout for faster detection
       headers: {
         Accept: "application/json",
+        "User-Agent": "UpbitListingBot/1.0",
       },
+      // Enable keep-alive for faster connections
+      httpAgent: new (require("http").Agent)({ keepAlive: true }),
+      httpsAgent: new (require("https").Agent)({ keepAlive: true }),
     });
   }
 
@@ -163,7 +252,7 @@ class UpbitListingDetector {
           adjustForTimeDifference: true,
           recvWindow: 10000, // Faster timeout
         },
-        timeout: 5000, // 5 second API timeout
+        timeout: 3000, // 3 second API timeout for faster execution
       });
 
       // Pre-load markets to cache
@@ -265,18 +354,27 @@ class UpbitListingDetector {
     }
   }
 
-  // Check for new listings with retry logic
+  // Check for new listings with optimized retry logic
   async checkForNewListings() {
     const checkStartTime = Date.now();
     let retries = 0;
-    const maxRetries = 3;
+    const maxRetries = 2; // Reduced retries for faster failure
 
     while (retries < maxRetries) {
       try {
-        // Fetch current markets from Upbit
-        const response = await this.upbitApi.get("/v1/market/all");
-        const markets = response.data;
+        // Fetch current markets from Upbit with faster timeout and response tracking
+        const apiStartTime = Date.now();
+        const response = await Promise.race([
+          this.upbitApi.get("/v1/market/all"),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("API_TIMEOUT")), 2000)
+          ),
+        ]);
 
+        const apiResponseTime = Date.now() - apiStartTime;
+        this.performance.recordApiResponse(apiResponseTime);
+
+        const markets = response.data;
         const currentMarkets = new Set(markets.map((m) => m.market));
 
         // Find new markets (not in our known set)
@@ -288,25 +386,46 @@ class UpbitListingDetector {
           const detectionLatency = Date.now() - checkStartTime;
           this.performance.recordDetection(detectionLatency);
 
-          for (const market of newMarkets) {
-            await this.handleNewListing(market, checkStartTime);
-          }
+          // CRITICAL: Process all new listings in parallel for maximum speed
+          const listingPromises = newMarkets.map((market) =>
+            this.handleNewListing(market, checkStartTime)
+          );
 
-          // Update known markets
+          // Execute all listings simultaneously
+          await Promise.allSettled(listingPromises);
+
+          // Update known markets immediately
           newMarkets.forEach((m) => this.knownMarkets.add(m.market));
+
+          logger.info(
+            `🚀 Processed ${newMarkets.length} new listings in parallel`
+          );
+        } else {
+          // Debug mode: Log every Nth check to show it's alive
+          this.checkCount = (this.checkCount || 0) + 1;
+          if (this.checkCount % 120 === 0) {
+            // Log every 120 checks (every minute if polling every 0.5 seconds)
+            logger.debug(
+              `✓ Checked ${this.checkCount} times, ${this.knownMarkets.size} markets tracked, no new listings`
+            );
+          }
         }
 
         // Success - reset error count
         this.consecutiveErrors = 0;
+        this.lastSuccessfulCheck = Date.now();
         return;
       } catch (error) {
         retries++;
 
-        if (error.response && error.response.status === 429) {
+        if (error.message === "API_TIMEOUT") {
+          logger.warn(`⚠️  API timeout (attempt ${retries}/${maxRetries})`);
+          await this.sleep(500); // Quick retry
+        } else if (error.response && error.response.status === 429) {
           logger.warn(
             `⚠️  Rate limit hit (attempt ${retries}/${maxRetries}), waiting...`
           );
-          await this.sleep(2000 * retries); // Exponential backoff
+          await this.sleep(1000 * retries); // Reduced backoff
         } else if (
           error.code === "ECONNREFUSED" ||
           error.code === "ETIMEDOUT"
@@ -314,7 +433,7 @@ class UpbitListingDetector {
           logger.warn(
             `⚠️  Connection error (attempt ${retries}/${maxRetries}): ${error.message}`
           );
-          await this.sleep(1000 * retries);
+          await this.sleep(500 * retries); // Reduced backoff
         } else {
           logger.error(
             `❌ Error checking markets (attempt ${retries}/${maxRetries}):`,
@@ -325,15 +444,16 @@ class UpbitListingDetector {
             this.consecutiveErrors++;
 
             // If too many consecutive errors, slow down polling
-            if (this.consecutiveErrors >= 5) {
+            if (this.consecutiveErrors >= 3) {
+              // Reduced threshold
               logger.warn(
                 "⚠️  Too many errors, slowing down polling temporarily..."
               );
-              await this.sleep(10000); // Wait 10 seconds
+              await this.sleep(5000); // Reduced wait time
               this.consecutiveErrors = 0;
             }
           } else {
-            await this.sleep(500 * retries);
+            await this.sleep(200 * retries); // Faster retry
           }
         }
       }
@@ -412,7 +532,7 @@ class UpbitListingDetector {
     }
   }
 
-  // Execute trade with optimized speed
+  // Execute trade with ULTRA-optimized speed
   async executeTrade(symbol, orderStartTime, detectionStartTime) {
     try {
       // Check daily limit
@@ -429,27 +549,43 @@ class UpbitListingDetector {
         return;
       }
 
-      // CRITICAL SPEED OPTIMIZATION: Fetch ticker and order amount in parallel
-      const [orderAmount, ticker] = await Promise.all([
+      // ULTRA-SPEED: Execute everything in parallel with race conditions
+      const [orderAmount, ticker, leverageResult] = await Promise.allSettled([
         this.getOrderAmount(),
         this.bybitClient.fetchTicker(symbol),
+        this.bybitClient.setLeverage(this.config.leverage, symbol), // Set leverage immediately
       ]);
 
-      const currentPrice = ticker.last;
-      const orderSize = (orderAmount * this.config.leverage) / currentPrice;
+      // Use cached order amount if balance fetch failed
+      const finalOrderAmount =
+        orderAmount.status === "fulfilled"
+          ? orderAmount.value
+          : this.cachedOrderAmount;
+      const currentPrice =
+        ticker.status === "fulfilled" ? ticker.value.last : null;
+
+      if (!currentPrice) {
+        throw new Error("Failed to fetch current price");
+      }
+
+      const orderSize =
+        (finalOrderAmount * this.config.leverage) / currentPrice;
       const amount = this.bybitClient.amountToPrecision(symbol, orderSize);
 
       logger.info(
         `   🎯 EXECUTING: ${amount} ${symbol} @ $${currentPrice} | ${this.config.leverage}x`
       );
 
-      // CRITICAL: Set leverage async (don't wait)
-      this.bybitClient.setLeverage(this.config.leverage, symbol).catch(() => {
-        /* Ignore - leverage might already be set */
-      });
+      // CRITICAL: Place market order with timeout race
+      const orderPromise = this.bybitClient.createMarketBuyOrder(
+        symbol,
+        amount
+      );
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("ORDER_TIMEOUT")), 2000)
+      );
 
-      // CRITICAL: Place market order IMMEDIATELY
-      const order = await this.bybitClient.createMarketBuyOrder(symbol, amount);
+      const order = await Promise.race([orderPromise, timeoutPromise]);
 
       const orderExecutionTime = Date.now() - orderStartTime;
       const totalLatency = Date.now() - detectionStartTime;
@@ -464,24 +600,27 @@ class UpbitListingDetector {
       logger.info(`      Detection → Order: ${totalLatency}ms`);
       logger.info(`      Order Execution: ${orderExecutionTime}ms`);
 
-      // Store position
+      // Store position immediately
       this.openPositions.set(symbol, {
         symbol,
         amount,
         entryPrice: currentPrice,
         entryTime: Date.now(),
         orderId: order.id,
-        margin: orderAmount,
+        margin: finalOrderAmount,
       });
 
-      // NON-CRITICAL: Set stop loss and schedule sell in parallel (async)
+      // NON-CRITICAL: Set stop loss and schedule sell in parallel (async, non-blocking)
       if (this.config.parallelExecution) {
-        Promise.all([
-          this.config.stopLossPercent > 0
-            ? this.setStopLoss(symbol, currentPrice, amount)
-            : Promise.resolve(),
-          Promise.resolve(this.scheduleAutoSell(symbol, amount)),
-        ]).catch((err) => logger.error("Post-order error:", err.message));
+        // Use setImmediate for non-blocking execution
+        setImmediate(() => {
+          Promise.allSettled([
+            this.config.stopLossPercent > 0
+              ? this.setStopLoss(symbol, currentPrice, amount)
+              : Promise.resolve(),
+            Promise.resolve(this.scheduleAutoSell(symbol, amount)),
+          ]).catch((err) => logger.error("Post-order error:", err.message));
+        });
       }
     } catch (error) {
       const totalLatency = Date.now() - detectionStartTime;
@@ -711,8 +850,18 @@ async function main() {
         markets: status.knownMarkets,
         ordersToday: status.ordersToday,
         openPositions: status.openPositions,
+        checksPerformed: detector.checkCount || 0,
       });
     }, 10 * 60 * 1000);
+
+    // Health check - log every minute to show bot is alive
+    setInterval(() => {
+      logger.debug(
+        `💓 Bot heartbeat - Polls: ${detector.checkCount || 0}, Markets: ${
+          detector.knownMarkets.size
+        }`
+      );
+    }, 60 * 1000);
   } catch (error) {
     logger.error("❌ Fatal error:", error);
     process.exit(1);
