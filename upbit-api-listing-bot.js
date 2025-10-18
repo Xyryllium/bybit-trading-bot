@@ -3,6 +3,8 @@ dotenv.config({ path: "./env.upbit-listing" });
 import ccxt from "ccxt";
 import logger from "./logger.js";
 import axios from "axios";
+import http from "http";
+import https from "https";
 
 // Performance monitoring with delay alerting
 class PerformanceMonitor {
@@ -233,8 +235,8 @@ class UpbitListingDetector {
         "User-Agent": "UpbitListingBot/1.0",
       },
       // Enable keep-alive for faster connections
-      httpAgent: new (require("http").Agent)({ keepAlive: true }),
-      httpsAgent: new (require("https").Agent)({ keepAlive: true }),
+      httpAgent: new http.Agent({ keepAlive: true }),
+      httpsAgent: new https.Agent({ keepAlive: true }),
     });
   }
 
