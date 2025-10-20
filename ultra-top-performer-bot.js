@@ -14,10 +14,20 @@ class UltraTopPerformerBot {
     this.exchange = null;
     this.scalpingStrategy = null;
 
-    // Bot parameters
-    this.initialBalance = config.trading.initialBalance || 100;
-    this.leverage = config.trading.leverage || 10;
-    this.marginMode = config.trading.marginMode || "cross";
+    // Debug: Check what environment variables are loaded
+    console.log("🔍 Environment Debug:", {
+      INITIAL_BALANCE: process.env.INITIAL_BALANCE,
+      LEVERAGE: process.env.LEVERAGE,
+      MARGIN_MODE: process.env.MARGIN_MODE,
+      configInitialBalance: config.trading.initialBalance,
+      configLeverage: config.trading.leverage,
+      configMarginMode: config.trading.marginMode,
+    });
+
+    // Bot parameters - Read directly from process.env to bypass config.js defaults
+    this.initialBalance = parseFloat(process.env.INITIAL_BALANCE) || 100;
+    this.leverage = parseInt(process.env.LEVERAGE) || 10;
+    this.marginMode = process.env.MARGIN_MODE || "cross";
     this.balance = this.initialBalance;
     this.effectiveBalance = this.initialBalance * this.leverage;
 
