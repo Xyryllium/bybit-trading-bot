@@ -46,6 +46,9 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         STRATEGY_TYPE: "ULTRA_SCALPING",
+        SCALP_INITIAL_BALANCE: "100",
+        SCALP_LEVERAGE: "10",
+        SCALP_MARGIN_MODE: "cross",
       },
     },
   ],

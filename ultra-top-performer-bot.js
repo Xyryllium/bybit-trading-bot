@@ -16,18 +16,20 @@ class UltraTopPerformerBot {
 
     // Debug: Check what environment variables are loaded
     console.log("🔍 Environment Debug:", {
-      INITIAL_BALANCE: process.env.INITIAL_BALANCE,
-      LEVERAGE: process.env.LEVERAGE,
-      MARGIN_MODE: process.env.MARGIN_MODE,
+      SCALP_INITIAL_BALANCE: process.env.SCALP_INITIAL_BALANCE,
+      SCALP_LEVERAGE: process.env.SCALP_LEVERAGE,
+      SCALP_MARGIN_MODE: process.env.SCALP_MARGIN_MODE,
+      INITIAL_BALANCE: process.env.INITIAL_BALANCE, // From .env (SMC)
+      LEVERAGE: process.env.LEVERAGE, // From .env (SMC)
       configInitialBalance: config.trading.initialBalance,
       configLeverage: config.trading.leverage,
       configMarginMode: config.trading.marginMode,
     });
 
-    // Bot parameters - Read directly from process.env to bypass config.js defaults
-    this.initialBalance = parseFloat(process.env.INITIAL_BALANCE) || 100;
-    this.leverage = parseInt(process.env.LEVERAGE) || 10;
-    this.marginMode = process.env.MARGIN_MODE || "cross";
+    // Bot parameters - Use scalping-specific environment variables
+    this.initialBalance = parseFloat(process.env.SCALP_INITIAL_BALANCE) || 100;
+    this.leverage = parseInt(process.env.SCALP_LEVERAGE) || 10;
+    this.marginMode = process.env.SCALP_MARGIN_MODE || "cross";
     this.balance = this.initialBalance;
     this.effectiveBalance = this.initialBalance * this.leverage;
 
