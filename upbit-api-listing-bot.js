@@ -107,7 +107,7 @@ class PerformanceMonitor {
   getStats() {
     const avg = (arr) =>
       arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-    const min = (arr) => {
+    const getMin = (arr) => {
       if (arr.length === 0) return 0;
       let minVal = arr[0];
       for (let i = 1; i < arr.length; i++) {
@@ -115,7 +115,7 @@ class PerformanceMonitor {
       }
       return minVal;
     };
-    const max = (arr) => {
+    const getMax = (arr) => {
       if (arr.length === 0) return 0;
       let maxVal = arr[0];
       for (let i = 1; i < arr.length; i++) {
@@ -134,23 +134,23 @@ class PerformanceMonitor {
       latency: {
         detection: {
           avg: avg(this.metrics.detectionLatency).toFixed(2),
-          min: min(this.metrics.detectionLatency).toFixed(2),
-          max: max(this.metrics.detectionLatency).toFixed(2),
+          min: getMin(this.metrics.detectionLatency).toFixed(2),
+          max: getMax(this.metrics.detectionLatency).toFixed(2),
         },
         orderExecution: {
           avg: avg(this.metrics.orderExecutionTime).toFixed(2),
-          min: min(this.metrics.orderExecutionTime).toFixed(2),
-          max: max(this.metrics.orderExecutionTime).toFixed(2),
+          min: getMin(this.metrics.orderExecutionTime).toFixed(2),
+          max: getMax(this.metrics.orderExecutionTime).toFixed(2),
         },
         total: {
           avg: avg(this.metrics.totalLatency).toFixed(2),
-          min: min(this.metrics.totalLatency).toFixed(2),
-          max: max(this.metrics.totalLatency).toFixed(2),
+          min: getMin(this.metrics.totalLatency).toFixed(2),
+          max: getMax(this.metrics.totalLatency).toFixed(2),
         },
         apiResponse: {
           avg: avg(this.metrics.apiResponseTimes).toFixed(2),
-          min: min(this.metrics.apiResponseTimes).toFixed(2),
-          max: max(this.metrics.apiResponseTimes).toFixed(2),
+          min: getMin(this.metrics.apiResponseTimes).toFixed(2),
+          max: getMax(this.metrics.apiResponseTimes).toFixed(2),
         },
       },
       alerts: {
@@ -416,6 +416,11 @@ class UpbitListingDetector {
         if (newMarkets.length > 0) {
           const detectionLatency = Date.now() - checkStartTime;
           this.performance.recordDetection(detectionLatency);
+
+          logger.info(`🚨 DETECTED ${newMarkets.length} NEW LISTINGS!`);
+          newMarkets.forEach((market, index) => {
+            logger.info(`   ${index + 1}. ${market.market} - ${market.english_name} (${market.korean_name})`);
+          });
 
           // CRITICAL: Process all new listings in parallel for maximum speed
           const listingPromises = newMarkets.map((market) =>
@@ -809,6 +814,38 @@ class UpbitListingDetector {
       pendingSells: this.sellTimers.size,
       performance: this.performance.getStats(),
     };
+  }
+
+  // Manual check for debugging
+  async manualCheck() {
+    try {
+      logger.info("🔍 MANUAL CHECK: Fetching current Upbit markets...");
+      const response = await this.upbitApi.get("/v1/market/all");
+      const markets = response.data;
+      const currentMarkets = new Set(markets.map((m) => m.market));
+      
+      logger.info(`📊 Current Upbit markets: ${currentMarkets.size}`);
+      logger.info(`📊 Known markets: ${this.knownMarkets.size}`);
+      
+      // Find new markets
+      const newMarkets = markets.filter(
+        (market) => !this.knownMarkets.has(market.market)
+      );
+      
+      if (newMarkets.length > 0) {
+        logger.info(`🚨 FOUND ${newMarkets.length} NEW MARKETS:`);
+        newMarkets.forEach((market, index) => {
+          logger.info(`   ${index + 1}. ${market.market} - ${market.english_name} (${market.korean_name})`);
+        });
+        return newMarkets;
+      } else {
+        logger.info("✅ No new markets found");
+        return [];
+      }
+    } catch (error) {
+      logger.error("❌ Manual check failed:", error.message);
+      return [];
+    }
   }
 }
 
