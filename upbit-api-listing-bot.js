@@ -28,10 +28,22 @@ class PerformanceMonitor {
       criticalDelay: 30000, // 30 seconds
       slowOrderExecution: 3000, // 3 seconds
     };
+
+    // Maximum array size to prevent memory issues
+    this.MAX_ARRAY_SIZE = 1000;
+  }
+
+  // Helper method to trim arrays to prevent memory issues
+  trimArray(arr) {
+    if (arr.length > this.MAX_ARRAY_SIZE) {
+      // Keep only the most recent entries
+      arr.splice(0, arr.length - this.MAX_ARRAY_SIZE);
+    }
   }
 
   recordDetection(latencyMs) {
     this.metrics.detectionLatency.push(latencyMs);
+    this.trimArray(this.metrics.detectionLatency);
     this.metrics.detectionCount++;
     this.metrics.lastDetectionTime = Date.now();
 
@@ -63,6 +75,7 @@ class PerformanceMonitor {
 
   recordApiResponse(responseTimeMs) {
     this.metrics.apiResponseTimes.push(responseTimeMs);
+    this.trimArray(this.metrics.apiResponseTimes);
 
     if (responseTimeMs > 2000) {
       logger.warn(`⚠️  Slow API response: ${responseTimeMs}ms`);
@@ -71,6 +84,7 @@ class PerformanceMonitor {
 
   recordOrderExecution(latencyMs, success = true) {
     this.metrics.orderExecutionTime.push(latencyMs);
+    this.trimArray(this.metrics.orderExecutionTime);
     if (success) {
       this.metrics.orderSuccessCount++;
     } else {
@@ -87,13 +101,28 @@ class PerformanceMonitor {
 
   recordTotalLatency(latencyMs) {
     this.metrics.totalLatency.push(latencyMs);
+    this.trimArray(this.metrics.totalLatency);
   }
 
   getStats() {
     const avg = (arr) =>
       arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-    const min = (arr) => (arr.length > 0 ? Math.min(...arr) : 0);
-    const max = (arr) => (arr.length > 0 ? Math.max(...arr) : 0);
+    const min = (arr) => {
+      if (arr.length === 0) return 0;
+      let minVal = arr[0];
+      for (let i = 1; i < arr.length; i++) {
+        if (arr[i] < minVal) minVal = arr[i];
+      }
+      return minVal;
+    };
+    const max = (arr) => {
+      if (arr.length === 0) return 0;
+      let maxVal = arr[0];
+      for (let i = 1; i < arr.length; i++) {
+        if (arr[i] > maxVal) maxVal = arr[i];
+      }
+      return maxVal;
+    };
 
     return {
       detections: this.metrics.detectionCount,
