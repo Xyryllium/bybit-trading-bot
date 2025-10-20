@@ -32,5 +32,21 @@ module.exports = {
         NODE_ENV: "production",
       },
     },
+    {
+      name: "scalping-bot",
+      script: "ultra-top-performer-bot.js", // Live trading bot
+      env_file: "./env.ultra-scalping",
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: "600M",
+      error_file: "./logs/pm2-ultra-scalping-error.log",
+      out_file: "./logs/pm2-ultra-scalping-out.log",
+      time: true,
+      env: {
+        NODE_ENV: "production",
+        STRATEGY_TYPE: "ULTRA_SCALPING",
+      },
+    },
   ],
 };

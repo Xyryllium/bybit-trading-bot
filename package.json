@@ -22,7 +22,15 @@
     "smc:refined": "node backtest.js BTC/USDT 1h 30",
     "rsi": "node backtest.js BTC/USDT 15m 60",
     "test:all": "node backtest.js SOL/USDT 5m 30",
-    "compare:all": "echo Testing all strategies... && npm run rsi && npm run smc && npm run smc:refined && npm run scalp:5m"
+    "compare:all": "echo Testing all strategies... && npm run rsi && npm run smc && npm run smc:refined && npm run scalp:5m",
+    "top-performer": "node top-performer-scalping-bot.js",
+    "top-performer:backtest": "node top-performer-scalping-backtest.js",
+    "top-performer:backtest-simple": "node simplified-top-performer-backtest.js",
+    "top-performer:enhanced": "node enhanced-top-performer-backtest.js",
+    "top-performer:ultra": "node ultra-top-performer-backtest.js",
+    "top-performer:run": "bash run-top-performer-scalping.bat",
+    "top-performer:backtest-run": "bash run-top-performer-scalping-backtest.bat",
+    "top-performer:ultra-run": "bash run-ultra-top-performer-backtest.bat"
   },
   "keywords": [
     "trading",
