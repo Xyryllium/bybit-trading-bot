@@ -1,11 +1,12 @@
 import dotenv from "dotenv";
+
+// Load ultra-scalping environment FIRST
+dotenv.config({ path: "./env.ultra-scalping" });
+
 import { config } from "./config.js";
 import { UltraScalpingStrategy } from "./ultra-scalping-strategy.js";
 import logger from "./logger.js";
 import ccxt from "ccxt";
-
-// Load ultra-scalping environment
-dotenv.config({ path: "./env.ultra-scalping" });
 
 class UltraTopPerformerBot {
   constructor() {
