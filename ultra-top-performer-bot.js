@@ -438,6 +438,14 @@ class UltraTopPerformerBot {
 
       const signal = this.scalpingStrategy.analyze(ohlcv);
 
+      // Debug volume analysis
+      const recentCandles = ohlcv.slice(-25);
+      const volumes = recentCandles.map((c) => c[5]);
+      const avgVolume =
+        volumes.reduce((sum, vol) => sum + vol, 0) / volumes.length;
+      const currentVolume = volumes[volumes.length - 1];
+      const volumeRatio = currentVolume / avgVolume;
+
       // Debug logging for signal analysis
       logger.info("🔍 Signal analysis", {
         symbol: symbol,
@@ -445,6 +453,13 @@ class UltraTopPerformerBot {
         minScore: this.scalpingStrategy.minScore,
         currentPrice: ohlcv[ohlcv.length - 1][4],
         candlesLength: ohlcv.length,
+        volumeAnalysis: {
+          currentVolume: currentVolume,
+          avgVolume: avgVolume.toFixed(2),
+          volumeRatio: volumeRatio.toFixed(2),
+          minRequired: this.scalpingStrategy.minVolumeRatio,
+          volumes: volumes.slice(-5).map((v) => v.toFixed(0)), // Last 5 volumes
+        },
         strategyConfig: {
           minVolumeRatio: this.scalpingStrategy.minVolumeRatio,
           maxVolatility: this.scalpingStrategy.maxVolatility,
