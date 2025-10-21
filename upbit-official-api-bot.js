@@ -65,8 +65,8 @@ class UpbitOfficialAPIBot {
         } markets`
       );
 
-      // Get initial announcement ID to start monitoring
-      await this.getInitialAnnouncementId();
+      // Skip initial announcement ID - start fresh monitoring
+      this.lastAnnouncementId = 0; // Start fresh
 
       logger.info("✅ Upbit Official API Bot initialized successfully");
       logger.info("🎯 This bot will detect announcements INSTANTLY!");
@@ -77,34 +77,7 @@ class UpbitOfficialAPIBot {
     }
   }
 
-  async getInitialAnnouncementId() {
-    try {
-      const response = await this.upbitAnnouncementApi.get(
-        "/api/v1/announcements",
-        {
-          params: {
-            os: "web",
-            page: 1,
-            per_page: 1,
-            category: "all",
-          },
-        }
-      );
-
-      if (response.data.success && response.data.data.notices.length > 0) {
-        this.lastAnnouncementId = response.data.data.notices[0].id;
-        logger.info(
-          `📊 Starting from announcement ID: ${this.lastAnnouncementId}`
-        );
-      }
-    } catch (error) {
-      logger.warn(
-        `⚠️  Could not get initial announcement ID: ${error.message}`
-      );
-      // Set a default starting ID to avoid issues
-      this.lastAnnouncementId = 5666; // Latest known ID
-    }
-  }
+  // Initial announcement ID fetch removed - starting fresh monitoring
 
   async checkUpbitAnnouncements() {
     try {
@@ -146,9 +119,7 @@ class UpbitOfficialAPIBot {
       }
     } catch (error) {
       if (error.response?.status === 429) {
-        logger.warn("⚠️  Rate limited - waiting longer between requests");
-        // Add extra delay on rate limit
-        await new Promise((resolve) => setTimeout(resolve, 10000));
+        logger.warn("⚠️  Rate limited - will retry on next interval");
       } else {
         logger.error("❌ Error checking announcements:");
         logger.error("   Status:", error.response?.status || "No status");
@@ -313,8 +284,7 @@ class UpbitOfficialAPIBot {
     this.isRunning = true;
     logger.info("🚀 Starting Upbit Official API Bot...");
 
-    // Check announcements every 3 seconds
-    // But start polling 5 seconds after initialization to avoid rate limits
+    // Check announcements every 3 seconds (safe now without initialization call!)
     setTimeout(() => {
       setInterval(() => {
         if (this.isRunning) {
@@ -329,9 +299,11 @@ class UpbitOfficialAPIBot {
     }, 5 * 60 * 1000);
 
     logger.info("✅ Upbit Official API Bot is now running!");
-    logger.info("   🚨 Announcements: Checking every 3 seconds (OPTIMAL!)");
     logger.info(
-      "   ⏰ Polling starts in 5 seconds (to avoid startup rate limits)"
+      "   🚨 Announcements: Checking every 3 seconds (OPTIMAL - safe without init!)"
+    );
+    logger.info(
+      "   ⏰ Polling starts in 5 seconds (clean startup, no rate limits)"
     );
     logger.info("   ⚡ Trading: IMMEDIATE on announcement");
     logger.info(`   📊 Pending listings: ${this.pendingListings.size}`);
