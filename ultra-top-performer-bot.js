@@ -220,7 +220,7 @@ class UltraTopPerformerBot {
         200
       );
 
-      const signal = this.scalpingStrategy.analyze(symbol, ohlcv);
+      const signal = this.scalpingStrategy.analyze(ohlcv);
 
       // Debug logging for signal analysis
       logger.info("🔍 Signal analysis", {
