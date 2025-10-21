@@ -144,9 +144,10 @@ class UpbitOfficialAPIBot {
       }
     } catch (error) {
       logger.error("❌ Error checking announcements:");
-      logger.error("   Status:", error.response?.status);
-      logger.error("   Message:", error.message);
-      logger.error("   Data:", error.response?.data);
+      logger.error("   Status:", error.response?.status || "No status");
+      logger.error("   Message:", error.message || "No message");
+      logger.error("   Data:", error.response?.data || "No data");
+      logger.error("   Full error:", error.toString());
     }
   }
 
@@ -186,69 +187,19 @@ class UpbitOfficialAPIBot {
         return;
       }
 
-      // Store as pending listing
-      this.pendingListings.set(tokenSymbol, {
-        tokenSymbol,
-        bybitSymbol,
-        announcement,
-        announcedAt: new Date(announcement.listed_at),
-        source: "upbit_official_api",
-      });
-
       this.metrics.announcementsDetected++;
-
-      logger.info(
-        `   ✅ ${tokenSymbol} added to pending list (${bybitSymbol})`
-      );
-      logger.info(`   ⏰ Waiting for API confirmation...`);
-      logger.info(`   📊 Pending listings: ${this.pendingListings.size}`);
+      
+      logger.info(`   ✅ ${tokenSymbol} detected - TRADING IMMEDIATELY!`);
+      logger.info(`   🚀 Executing trade for ${bybitSymbol}...`);
+      
+      // Execute trade right away
+      await this.executeTrade(bybitSymbol, tokenSymbol, announcement);
     } catch (error) {
       logger.error(`   ❌ Error processing announcement:`, error.message);
     }
   }
 
-  async checkUpbitApiListings() {
-    try {
-      const response = await this.upbitMarketApi.get("/v1/market/all");
-      const markets = response.data;
-      const currentMarkets = new Set(markets.map((m) => m.market));
 
-      // Check if any pending listings are now live
-      for (const [tokenSymbol, listing] of this.pendingListings.entries()) {
-        const upbitMarkets = markets.filter((market) =>
-          market.market.includes(`-${tokenSymbol}`)
-        );
-
-        if (upbitMarkets.length > 0) {
-          logger.info(`🚨 CONFIRMED: ${tokenSymbol} is now LIVE on Upbit!`);
-
-          for (const market of upbitMarkets) {
-            logger.info(
-              `   📊 Market: ${market.market} - ${market.english_name}`
-            );
-          }
-
-          const delay = Date.now() - listing.announcedAt.getTime();
-          logger.info(
-            `   ⏱️  Delay from announcement: ${Math.round(delay / 1000)}s`
-          );
-
-          // Execute trade immediately
-          await this.executeTrade(
-            listing.bybitSymbol,
-            tokenSymbol,
-            listing.announcement
-          );
-
-          // Remove from pending
-          this.pendingListings.delete(tokenSymbol);
-          this.metrics.apiConfirmations++;
-        }
-      }
-    } catch (error) {
-      logger.error("❌ Error checking Upbit API:", error.message);
-    }
-  }
 
   async executeTrade(bybitSymbol, tokenSymbol, announcement) {
     try {
@@ -361,13 +312,8 @@ class UpbitOfficialAPIBot {
       if (this.isRunning) {
         this.checkUpbitAnnouncements();
       }
-    }, 500);
+    }, 3000);
 
-    setInterval(() => {
-      if (this.isRunning) {
-        this.checkUpbitApiListings();
-      }
-    }, 200);
 
     // Log status every 5 minutes
     setInterval(() => {
@@ -375,8 +321,8 @@ class UpbitOfficialAPIBot {
     }, 5 * 60 * 1000);
 
     logger.info("✅ Upbit Official API Bot is now running!");
-    logger.info("   🚨 Announcements: Checking every 500ms");
-    logger.info("   🔄 API Confirmations: Checking every 200ms");
+    logger.info("   🚨 Announcements: Checking every 3 seconds");
+    logger.info("   ⚡ Trading: IMMEDIATE on announcement");
     logger.info(`   📊 Pending listings: ${this.pendingListings.size}`);
     logger.info(
       "   🎯 Target: https://api-manager.upbit.com/api/v1/announcements"
@@ -388,7 +334,6 @@ class UpbitOfficialAPIBot {
     logger.info(
       `   Announcements Detected: ${this.metrics.announcementsDetected}`
     );
-    logger.info(`   API Confirmations: ${this.metrics.apiConfirmations}`);
     logger.info(`   Trades Executed: ${this.metrics.tradesExecuted}`);
     logger.info(`   Pending Listings: ${this.pendingListings.size}`);
 
@@ -399,12 +344,7 @@ class UpbitOfficialAPIBot {
       logger.info(`   Average Execution Time: ${Math.round(avgLatency)}ms`);
     }
 
-    for (const [token, listing] of this.pendingListings.entries()) {
-      const age = Math.round(
-        (Date.now() - listing.announcedAt.getTime()) / 1000
-      );
-      logger.info(`   ${token}: ${age}s since announcement`);
-    }
+    logger.info(`   ⚡ Trading Mode: IMMEDIATE)`);
   }
 
   stop() {
