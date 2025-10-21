@@ -44,9 +44,6 @@ class UltraTopPerformerBot {
     this.dailyTrades = 0;
     this.dailyStartBalance = this.initialBalance;
 
-    // Top performer switching
-    this.lastSwitchTime = null;
-
     logger.info("🚀 Ultra-Optimized Top Performer Scalping Bot Initialized", {
       initialBalance: this.initialBalance,
       leverage: this.leverage + "x",
@@ -279,6 +276,10 @@ class UltraTopPerformerBot {
         parseFloat(process.env.TOP_PERFORMER_SWITCH_THRESHOLD) || 1.0;
       const minSwitchInterval =
         parseInt(process.env.TOP_PERFORMER_MIN_SWITCH_INTERVAL) || 0;
+      const lowVolumeThreshold =
+        parseFloat(process.env.TOP_PERFORMER_LOW_VOLUME_THRESHOLD) || 0.8;
+      const enableVolumeSwitch =
+        process.env.TOP_PERFORMER_ENABLE_VOLUME_SWITCH === "true";
 
       // Check if enough time has passed since last switch
       const timeSinceLastSwitch = this.lastSwitchTime
@@ -286,18 +287,64 @@ class UltraTopPerformerBot {
         : Infinity;
       const canSwitch = timeSinceLastSwitch >= minSwitchInterval * 1000; // Convert to milliseconds
 
-      // Switch if significantly better performance and enough time has passed
-      if (
+      // Check current performer's volume
+      let currentVolumeRatio = 1.0;
+      let shouldSwitchDueToVolume = false;
+
+      if (this.currentTopPerformer && enableVolumeSwitch) {
+        try {
+          const currentSymbol = this.currentTopPerformer.symbol;
+          const currentOHLCV = await this.exchange.fetchOHLCV(
+            currentSymbol,
+            "5m",
+            undefined,
+            25
+          );
+
+          if (currentOHLCV.length >= 20) {
+            const volumes = currentOHLCV.slice(-20).map((c) => c[5]);
+            const avgVolume =
+              volumes.reduce((sum, vol) => sum + vol, 0) / volumes.length;
+            const currentVolume = volumes[volumes.length - 1];
+            currentVolumeRatio = currentVolume / avgVolume;
+
+            shouldSwitchDueToVolume = currentVolumeRatio < lowVolumeThreshold;
+
+            logger.debug("Current performer volume analysis", {
+              symbol: currentSymbol,
+              currentVolumeRatio: currentVolumeRatio.toFixed(2),
+              lowVolumeThreshold: lowVolumeThreshold,
+              shouldSwitchDueToVolume: shouldSwitchDueToVolume,
+            });
+          }
+        } catch (error) {
+          logger.debug("Failed to analyze current performer volume", {
+            error: error.message,
+          });
+        }
+      }
+
+      // Switch if significantly better performance OR low volume on current performer
+      const shouldSwitchForPerformance =
+        topPerformance > this.currentTopPerformer.performance + switchThreshold;
+      const shouldSwitch =
         !this.currentTopPerformer ||
-        (topPerformance >
-          this.currentTopPerformer.performance + switchThreshold &&
-          canSwitch)
-      ) {
+        (canSwitch && (shouldSwitchForPerformance || shouldSwitchDueToVolume));
+
+      if (shouldSwitch) {
+        const switchReason = !this.currentTopPerformer
+          ? "Initial selection"
+          : shouldSwitchDueToVolume
+          ? "Low volume on current performer"
+          : "Better performance detected";
+
         logger.info("🔄 Switching to new top performer", {
           from: this.currentTopPerformer?.symbol || "None",
           to: topSymbol,
           performance: topPerformance.toFixed(2) + "%",
           method: "UTC+8 Market Open Change",
+          reason: switchReason,
+          currentVolumeRatio: currentVolumeRatio.toFixed(2),
         });
 
         this.currentTopPerformer = {
