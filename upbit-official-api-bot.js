@@ -15,10 +15,9 @@ class UpbitOfficialAPIBot {
     this.pendingListings = new Map(); // token -> { announcement, bybitSymbol, announcedAt }
     this.isRunning = false;
 
-    // Upbit Official API Client
     this.upbitAnnouncementApi = axios.create({
       baseURL: "https://api-manager.upbit.com",
-      timeout: 5000,
+      timeout: 2000,
       headers: {
         "User-Agent": "UpbitOfficialAPIBot/1.0",
         Accept: "application/json",
@@ -26,10 +25,9 @@ class UpbitOfficialAPIBot {
       },
     });
 
-    // Upbit Market API for confirmations
     this.upbitMarketApi = axios.create({
       baseURL: "https://api.upbit.com",
-      timeout: 1500,
+      timeout: 800,
       headers: {
         Accept: "application/json",
         "User-Agent": "UpbitOfficialAPIBot/1.0",
@@ -57,7 +55,7 @@ class UpbitOfficialAPIBot {
           defaultType: "swap",
           adjustForTimeDifference: true,
         },
-        timeout: 3000,
+        timeout: 1500,
       });
 
       await this.bybitClient.loadMarkets();
@@ -145,7 +143,10 @@ class UpbitOfficialAPIBot {
         this.lastAnnouncementId = Math.max(...announcements.map((a) => a.id));
       }
     } catch (error) {
-      logger.error("❌ Error checking announcements:", error.message);
+      logger.error("❌ Error checking announcements:");
+      logger.error("   Status:", error.response?.status);
+      logger.error("   Message:", error.message);
+      logger.error("   Data:", error.response?.data);
     }
   }
 
@@ -156,9 +157,14 @@ class UpbitOfficialAPIBot {
       logger.info(`   🏷️  Category: ${announcement.category}`);
       logger.info(`   🆔 ID: ${announcement.id}`);
 
-      // Check if it's a trading announcement
-      if (announcement.category !== "거래") {
-        logger.info(`   ⏭️  Skipping non-trading announcement`);
+      // Check if it's a trading announcement (both Korean and English)
+      if (
+        announcement.category !== "거래" &&
+        announcement.category !== "Trade"
+      ) {
+        logger.info(
+          `   ⏭️  Skipping non-trading announcement (${announcement.category})`
+        );
         return;
       }
 
@@ -195,7 +201,6 @@ class UpbitOfficialAPIBot {
         `   ✅ ${tokenSymbol} added to pending list (${bybitSymbol})`
       );
       logger.info(`   ⏰ Waiting for API confirmation...`);
-      logger.info(`   🎯 This eliminates the 1.5-hour delay!`);
       logger.info(`   📊 Pending listings: ${this.pendingListings.size}`);
     } catch (error) {
       logger.error(`   ❌ Error processing announcement:`, error.message);
@@ -227,7 +232,6 @@ class UpbitOfficialAPIBot {
           logger.info(
             `   ⏱️  Delay from announcement: ${Math.round(delay / 1000)}s`
           );
-          logger.info(`   🎯 This is MUCH faster than the 1.5-hour delay!`);
 
           // Execute trade immediately
           await this.executeTrade(
@@ -314,11 +318,13 @@ class UpbitOfficialAPIBot {
   }
 
   extractTokenSymbol(title) {
-    // Extract token symbol from Korean announcement titles
+    // Extract token symbol from announcement titles (Korean and English)
     const patterns = [
       /\(([A-Z0-9]+)\)/, // (BIO), (BTC), etc.
-      /([A-Z0-9]{2,10})\s*신규/, // BIO 신규
-      /([A-Z0-9]{2,10})\s*거래/, // BIO 거래
+      /([A-Z0-9]{2,10})\s*신규/, // BIO 신규 (Korean)
+      /([A-Z0-9]{2,10})\s*거래/, // BIO 거래 (Korean)
+      /Market Support for ([A-Z0-9]+)/i, // Market Support for BIO (English)
+      /([A-Z0-9]+)\s*\(/, // BIO ( at start
     ];
 
     for (const pattern of patterns) {
@@ -351,19 +357,17 @@ class UpbitOfficialAPIBot {
     this.isRunning = true;
     logger.info("🚀 Starting Upbit Official API Bot...");
 
-    // Check announcements every 2 seconds (optimal rate limit!)
     setInterval(() => {
       if (this.isRunning) {
         this.checkUpbitAnnouncements();
       }
-    }, 2000);
+    }, 500);
 
-    // Check Upbit API every 1 second for confirmations
     setInterval(() => {
       if (this.isRunning) {
         this.checkUpbitApiListings();
       }
-    }, 1000);
+    }, 200);
 
     // Log status every 5 minutes
     setInterval(() => {
@@ -371,13 +375,12 @@ class UpbitOfficialAPIBot {
     }, 5 * 60 * 1000);
 
     logger.info("✅ Upbit Official API Bot is now running!");
-    logger.info("   🚨 Announcements: Checking every 2 seconds (optimal!)");
-    logger.info("   🔄 API Confirmations: Checking every 1 second");
+    logger.info("   🚨 Announcements: Checking every 500ms");
+    logger.info("   🔄 API Confirmations: Checking every 200ms");
     logger.info(`   📊 Pending listings: ${this.pendingListings.size}`);
     logger.info(
       "   🎯 Target: https://api-manager.upbit.com/api/v1/announcements"
     );
-    logger.info("   ⚡ This eliminates the 1.5-hour delay!");
   }
 
   logStatus() {
@@ -425,7 +428,7 @@ const config = {
 async function main() {
   try {
     logger.info("=".repeat(80));
-    logger.info("🚀 UPBIT OFFICIAL API BOT - ELIMINATES 1.5 HOUR DELAY! 🚀");
+    logger.info("🚀 UPBIT OFFICIAL API BOT 🚀");
     logger.info("=".repeat(80));
 
     const bot = new UpbitOfficialAPIBot(config);
