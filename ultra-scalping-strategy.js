@@ -43,7 +43,7 @@ export class UltraScalpingStrategy {
     this.lastBarPlayCandle = 0;
     this.lastBreakRetestLevel = null;
     this.lastBreakRetestCandle = 0;
-    this.patternCooldown = scalpConfig.patternCooldown || 25; // Longer cooldown
+    this.patternCooldown = scalpConfig.patternCooldown || 10; // Use env value
 
     // Performance tracking
     this.recentTrades = [];
@@ -71,7 +71,21 @@ export class UltraScalpingStrategy {
    * Ultra-optimized market analysis with strict filtering
    */
   analyze(candles, position = null) {
+    // Debug candle data
+    logger.debug("Strategy analyze called", {
+      candlesLength: candles?.length,
+      candlesType: typeof candles,
+      isArray: Array.isArray(candles),
+      firstCandle: candles?.[0],
+      lastCandle: candles?.[candles?.length - 1],
+    });
+
     if (!candles || candles.length < 150) {
+      logger.debug("Insufficient data check", {
+        candlesExists: !!candles,
+        candlesLength: candles?.length,
+        requiredLength: 150,
+      });
       return {
         action: "HOLD",
         reason: "Insufficient data for ultra scalping",

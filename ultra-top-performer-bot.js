@@ -44,6 +44,9 @@ class UltraTopPerformerBot {
     this.dailyTrades = 0;
     this.dailyStartBalance = this.initialBalance;
 
+    // Top performer switching
+    this.lastSwitchTime = null;
+
     logger.info("🚀 Ultra-Optimized Top Performer Scalping Bot Initialized", {
       initialBalance: this.initialBalance,
       leverage: this.leverage + "x",
@@ -167,11 +170,101 @@ class UltraTopPerformerBot {
   async updateTopPerformer() {
     try {
       const performances = {};
+      const currentTime = new Date();
+      const utc8Time = new Date(currentTime.getTime() + 8 * 60 * 60 * 1000); // UTC+8
+
+      // Get market timing from config
+      const marketOpenHour = parseInt(process.env.MARKET_OPEN_HOUR) || 9;
+      const marketOpenMinute = parseInt(process.env.MARKET_OPEN_MINUTE) || 0;
+      const tradingWindowHours =
+        parseInt(process.env.MARKET_TRADING_WINDOW_HOURS) || 6;
+      const useMarketOpenChange = process.env.USE_MARKET_OPEN_CHANGE === "true";
+
+      const marketOpenTime = new Date(utc8Time);
+      marketOpenTime.setHours(marketOpenHour, marketOpenMinute, 0, 0);
+
+      // Calculate hours since market open
+      const hoursSinceOpen = (utc8Time - marketOpenTime) / (1000 * 60 * 60);
+
+      logger.debug("Market timing analysis", {
+        currentTime: currentTime.toISOString(),
+        utc8Time: utc8Time.toISOString(),
+        marketOpenTime: marketOpenTime.toISOString(),
+        hoursSinceOpen: hoursSinceOpen.toFixed(2),
+        isMarketOpen:
+          hoursSinceOpen >= 0 && hoursSinceOpen <= tradingWindowHours,
+        useMarketOpenChange: useMarketOpenChange,
+      });
 
       for (const symbol of this.monitoredSymbols) {
-        const ticker = await this.exchange.fetchTicker(symbol);
-        const change24h = (ticker.change / ticker.last) * 100;
-        performances[symbol] = change24h;
+        try {
+          if (
+            useMarketOpenChange &&
+            hoursSinceOpen >= 0 &&
+            hoursSinceOpen <= tradingWindowHours
+          ) {
+            // Use market open price change analysis
+            const hourlyCandles = await this.exchange.fetchOHLCV(
+              symbol,
+              "1h",
+              undefined,
+              24
+            );
+
+            if (hourlyCandles.length >= 2) {
+              // Find the market open candle
+              const marketOpenCandle = this.findMarketOpenCandle(
+                hourlyCandles,
+                utc8Time,
+                marketOpenTime
+              );
+              const currentPrice = hourlyCandles[hourlyCandles.length - 1][4]; // Last close price
+
+              if (marketOpenCandle) {
+                const marketOpenPrice = marketOpenCandle[4]; // Market open close price
+                const priceChange =
+                  ((currentPrice - marketOpenPrice) / marketOpenPrice) * 100;
+                performances[symbol] = priceChange;
+
+                logger.debug("Market open analysis", {
+                  symbol: symbol,
+                  marketOpenPrice: marketOpenPrice,
+                  currentPrice: currentPrice,
+                  priceChange: priceChange.toFixed(2) + "%",
+                  marketOpenTime: new Date(marketOpenCandle[0]).toISOString(),
+                });
+              } else {
+                // Fallback to 24h change if market open candle not found
+                const ticker = await this.exchange.fetchTicker(symbol);
+                performances[symbol] = (ticker.change / ticker.last) * 100;
+              }
+            } else {
+              // Fallback to ticker data
+              const ticker = await this.exchange.fetchTicker(symbol);
+              performances[symbol] = (ticker.change / ticker.last) * 100;
+            }
+          } else {
+            // Use traditional 24h change
+            const ticker = await this.exchange.fetchTicker(symbol);
+            performances[symbol] = (ticker.change / ticker.last) * 100;
+          }
+        } catch (error) {
+          logger.debug("Error analyzing symbol", {
+            symbol,
+            error: error.message,
+          });
+          // Fallback to ticker data
+          try {
+            const ticker = await this.exchange.fetchTicker(symbol);
+            performances[symbol] = (ticker.change / ticker.last) * 100;
+          } catch (tickerError) {
+            logger.debug("Ticker fallback failed", {
+              symbol,
+              error: tickerError.message,
+            });
+            performances[symbol] = 0;
+          }
+        }
       }
 
       // Find top performer
@@ -181,15 +274,30 @@ class UltraTopPerformerBot {
 
       const [topSymbol, topPerformance] = sortedPerformances[0];
 
-      // Switch if significantly better performance
+      // Get switching configuration
+      const switchThreshold =
+        parseFloat(process.env.TOP_PERFORMER_SWITCH_THRESHOLD) || 1.0;
+      const minSwitchInterval =
+        parseInt(process.env.TOP_PERFORMER_MIN_SWITCH_INTERVAL) || 0;
+
+      // Check if enough time has passed since last switch
+      const timeSinceLastSwitch = this.lastSwitchTime
+        ? Date.now() - this.lastSwitchTime
+        : Infinity;
+      const canSwitch = timeSinceLastSwitch >= minSwitchInterval * 1000; // Convert to milliseconds
+
+      // Switch if significantly better performance and enough time has passed
       if (
         !this.currentTopPerformer ||
-        topPerformance > this.currentTopPerformer.performance + 1.0
+        (topPerformance >
+          this.currentTopPerformer.performance + switchThreshold &&
+          canSwitch)
       ) {
         logger.info("🔄 Switching to new top performer", {
           from: this.currentTopPerformer?.symbol || "None",
           to: topSymbol,
           performance: topPerformance.toFixed(2) + "%",
+          method: "UTC+8 Market Open Change",
         });
 
         this.currentTopPerformer = {
@@ -197,6 +305,9 @@ class UltraTopPerformerBot {
           performance: topPerformance,
           price: performances[topSymbol],
         };
+
+        // Record switch time
+        this.lastSwitchTime = Date.now();
 
         // Close current position if switching
         if (this.currentPosition) {
@@ -206,6 +317,32 @@ class UltraTopPerformerBot {
     } catch (error) {
       logger.error("Failed to update top performer", { error: error.message });
     }
+  }
+
+  /**
+   * Find the market open candle
+   */
+  findMarketOpenCandle(candles, utc8Time, marketOpenTime) {
+    // Look for candle closest to market open time
+    let closestCandle = null;
+    let smallestDiff = Infinity;
+
+    for (const candle of candles) {
+      const candleTime = new Date(candle[0]);
+      const timeDiff = Math.abs(candleTime - marketOpenTime);
+
+      if (timeDiff < smallestDiff) {
+        smallestDiff = timeDiff;
+        closestCandle = candle;
+      }
+    }
+
+    // Return candle if it's within 2 hours of market open
+    if (smallestDiff <= 2 * 60 * 60 * 1000) {
+      return closestCandle;
+    }
+
+    return null;
   }
 
   async checkForSignals() {
