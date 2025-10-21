@@ -217,7 +217,7 @@ class UltraTopPerformerBot {
         symbol,
         "5m",
         undefined,
-        100
+        200
       );
 
       const signal = this.scalpingStrategy.analyze(symbol, ohlcv);
