@@ -84,6 +84,24 @@ export class UltraScalpingStrategy {
 
     // Check ultra-strict market conditions first
     const marketConditions = this.analyzeUltraMarketConditions(candles);
+
+    // Debug market conditions
+    logger.debug("Market conditions analysis", {
+      suitable: marketConditions.suitable,
+      reason: marketConditions.reason,
+      volumeRatio: marketConditions.volumeRatio,
+      volatility: marketConditions.volatility,
+      trendAlignment: marketConditions.trendAlignment,
+      rsi: marketConditions.rsi,
+      momentumScore: marketConditions.momentumScore,
+      thresholds: {
+        minVolumeRatio: this.minVolumeRatio,
+        maxVolatility: this.maxVolatility,
+        minTrendStrength: this.minTrendStrength,
+        minMomentumScore: this.minMomentumScore,
+      },
+    });
+
     if (!marketConditions.suitable) {
       return {
         action: "HOLD",
@@ -96,6 +114,14 @@ export class UltraScalpingStrategy {
     const doubleTop = this.detectUltraDoubleTop(candles);
     let barPlay = this.detectUltraBarPlay(candles);
     let breakRetest = this.detectUltraBreakAndRetest(candles);
+
+    // Debug pattern detection
+    logger.debug("Pattern detection", {
+      doubleBottom: doubleBottom,
+      doubleTop: doubleTop,
+      barPlay: barPlay,
+      breakRetest: breakRetest,
+    });
 
     // Apply ultra-enhanced cooldown logic
     if (doubleBottom.detected) {

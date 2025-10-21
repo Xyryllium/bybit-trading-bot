@@ -222,12 +222,47 @@ class UltraTopPerformerBot {
 
       const signal = this.scalpingStrategy.analyze(symbol, ohlcv);
 
+      // Debug logging for signal analysis
+      logger.info("🔍 Signal analysis", {
+        symbol: symbol,
+        signal: signal,
+        minScore: this.scalpingStrategy.minScore,
+        currentPrice: ohlcv[ohlcv.length - 1][4],
+        candlesLength: ohlcv.length,
+        strategyConfig: {
+          minVolumeRatio: this.scalpingStrategy.minVolumeRatio,
+          maxVolatility: this.scalpingStrategy.maxVolatility,
+          minTrendStrength: this.scalpingStrategy.minTrendStrength,
+          minMomentumScore: this.scalpingStrategy.minMomentumScore,
+          patternCooldown: this.scalpingStrategy.patternCooldown,
+        },
+      });
+
       if (
         signal &&
         signal.action === "buy" &&
         signal.score >= this.scalpingStrategy.minScore
       ) {
+        logger.info("🎯 Valid buy signal detected", {
+          symbol: symbol,
+          score: signal.score,
+          reason: signal.reason,
+          setup: signal.setup,
+        });
         await this.openPosition(signal, ohlcv[ohlcv.length - 1][4]); // Use last close price
+      } else if (signal && signal.action === "buy") {
+        logger.debug("Signal rejected - score too low", {
+          symbol: symbol,
+          score: signal.score,
+          minRequired: this.scalpingStrategy.minScore,
+          reason: signal.reason,
+        });
+      } else {
+        logger.debug("No buy signal", {
+          symbol: symbol,
+          action: signal?.action || "none",
+          reason: signal?.reason || "no signal",
+        });
       }
     } catch (error) {
       logger.error("Failed to check signals", { error: error.message });
@@ -272,13 +307,36 @@ class UltraTopPerformerBot {
           score: signal.score,
         });
       } else {
-        // TODO: Implement actual order placement
-        logger.info("🚀 LIVE: Opening position", {
-          symbol: this.currentTopPerformer.symbol,
-          entryPrice: price.toFixed(4),
-          quantity: positionSize.quantity.toFixed(6),
-          positionValue: positionSize.positionValue.toFixed(2),
-        });
+        // Execute actual order placement
+        try {
+          const order = await this.exchange.createMarketBuyOrder(
+            this.currentTopPerformer.symbol,
+            positionSize.quantity
+          );
+
+          logger.info("🚀 LIVE: Position opened successfully", {
+            symbol: this.currentTopPerformer.symbol,
+            orderId: order.id,
+            entryPrice: order.price || order.average,
+            quantity: order.amount,
+            positionValue: positionSize.positionValue.toFixed(2),
+            stopLoss: stopLoss.toFixed(4),
+            takeProfit: takeProfit.toFixed(4),
+            score: signal.score,
+          });
+
+          // Update position with actual order details
+          this.currentPosition.entryPrice = order.price || order.average;
+          this.currentPosition.quantity = order.amount;
+          this.currentPosition.orderId = order.id;
+        } catch (orderError) {
+          logger.error("Failed to place order", {
+            error: orderError.message,
+            symbol: this.currentTopPerformer.symbol,
+            quantity: positionSize.quantity,
+          });
+          return; // Don't create position if order failed
+        }
       }
 
       this.currentPosition = {
@@ -348,29 +406,59 @@ class UltraTopPerformerBot {
       );
       const exitPrice = ticker.last;
 
-      const profit =
-        (exitPrice - this.currentPosition.entryPrice) *
-        this.currentPosition.quantity;
-      const profitPercent =
-        ((exitPrice - this.currentPosition.entryPrice) /
-          this.currentPosition.entryPrice) *
-        100;
-      const fees = this.currentPosition.positionValue * 0.002;
-      const netProfit = profit - fees;
+      // Execute actual sell order
+      if (this.config.trading.dryRun) {
+        logger.info("🔵 DRY RUN: Would close position", {
+          symbol: this.currentPosition.symbol,
+          entryPrice: this.currentPosition.entryPrice.toFixed(4),
+          exitPrice: exitPrice.toFixed(4),
+          reason: reason,
+        });
+      } else {
+        try {
+          const sellOrder = await this.exchange.createMarketSellOrder(
+            this.currentPosition.symbol,
+            this.currentPosition.quantity
+          );
 
-      // Update balance
-      this.balance += netProfit;
-      this.effectiveBalance = this.balance * this.leverage;
+          logger.info("🔴 LIVE: Position closed successfully", {
+            symbol: this.currentPosition.symbol,
+            orderId: sellOrder.id,
+            entryPrice: this.currentPosition.entryPrice.toFixed(4),
+            exitPrice: sellOrder.price || sellOrder.average,
+            reason: reason,
+          });
 
-      logger.info("🔴 Position closed", {
-        symbol: this.currentPosition.symbol,
-        entryPrice: this.currentPosition.entryPrice.toFixed(4),
-        exitPrice: exitPrice.toFixed(4),
-        profit: netProfit.toFixed(2),
-        profitPercent: profitPercent.toFixed(2) + "%",
-        reason: reason,
-        balance: this.balance.toFixed(2),
-      });
+          // Use actual exit price from order
+          const actualExitPrice = sellOrder.price || sellOrder.average;
+          const profit =
+            (actualExitPrice - this.currentPosition.entryPrice) *
+            this.currentPosition.quantity;
+          const profitPercent =
+            ((actualExitPrice - this.currentPosition.entryPrice) /
+              this.currentPosition.entryPrice) *
+            100;
+          const fees = this.currentPosition.positionValue * 0.002;
+          const netProfit = profit - fees;
+
+          // Update balance
+          this.balance += netProfit;
+          this.effectiveBalance = this.balance * this.leverage;
+
+          logger.info("💰 Trade completed", {
+            profit: netProfit.toFixed(2),
+            profitPercent: profitPercent.toFixed(2) + "%",
+            balance: this.balance.toFixed(2),
+          });
+        } catch (sellError) {
+          logger.error("Failed to close position", {
+            error: sellError.message,
+            symbol: this.currentPosition.symbol,
+            quantity: this.currentPosition.quantity,
+          });
+          return; // Don't clear position if sell failed
+        }
+      }
 
       this.currentPosition = null;
     } catch (error) {
