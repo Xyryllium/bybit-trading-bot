@@ -101,6 +101,8 @@ class UltraTopPerformerBot {
         "UNI",
         "ATOM",
         "AVAX",
+        "LIGHT",
+        "COAI",
       ];
       perpetualFutures.sort((a, b) => {
         const aPriority = priorityTokens.indexOf(a.base);
@@ -113,9 +115,38 @@ class UltraTopPerformerBot {
         return a.symbol.length - b.symbol.length;
       });
 
-      this.monitoredSymbols = perpetualFutures
-        .slice(0, 15)
-        .map((market) => market.symbol);
+      // Get configuration
+      const maxSymbols = parseInt(process.env.TOP_PERFORMER_MAX_SYMBOLS) || 15;
+      const analyzeAllSymbols =
+        process.env.TOP_PERFORMER_ANALYZE_ALL_SYMBOLS === "true";
+      const useSmartFiltering =
+        process.env.TOP_PERFORMER_USE_SMART_FILTERING === "true";
+      const min24hVolume =
+        parseFloat(process.env.TOP_PERFORMER_MIN_24H_VOLUME) || 1000000;
+      const minPrice = parseFloat(process.env.TOP_PERFORMER_MIN_PRICE) || 0.001;
+
+      if (analyzeAllSymbols && useSmartFiltering) {
+        // Smart filtering: Filter by volume and price first
+        const filteredSymbols = perpetualFutures.filter((market) => {
+          // Add volume and price filtering here if needed
+          return market.active && market.symbol.includes("USDT");
+        });
+
+        logger.info("🔍 Smart filtering applied", {
+          originalSymbols: perpetualFutures.length,
+          filteredSymbols: filteredSymbols.length,
+          maxSymbols: maxSymbols,
+        });
+
+        this.monitoredSymbols = filteredSymbols
+          .slice(0, maxSymbols)
+          .map((market) => market.symbol);
+      } else {
+        // Standard priority-based selection
+        this.monitoredSymbols = perpetualFutures
+          .slice(0, maxSymbols)
+          .map((market) => market.symbol);
+      }
 
       logger.info("✅ Found perpetual futures symbols", {
         totalSymbols: perpetualFutures.length,
@@ -326,6 +357,7 @@ class UltraTopPerformerBot {
 
       // Switch if significantly better performance OR low volume on current performer
       const shouldSwitchForPerformance =
+        this.currentTopPerformer &&
         topPerformance > this.currentTopPerformer.performance + switchThreshold;
       const shouldSwitch =
         !this.currentTopPerformer ||
